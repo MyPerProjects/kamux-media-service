@@ -7,7 +7,6 @@ const PORT = 5000;
 
 let youtube = null;
 
-// Inicializamos youtubei.js apuntando nativamente al cliente exclusivo de YouTube Music
 async function initYouTube() {
   try {
     youtube = await Innertube.create({ client_type: "YTMUSIC" });
@@ -19,7 +18,7 @@ async function initYouTube() {
 
 initYouTube();
 
-// Endpoint 1: Búsqueda de Catálogo Musical Puro utilizando el submódulo nativo de música
+// Endpoint 1: Búsqueda de Catálogo Musical Puro
 app.get("/search", async (req, res) => {
   const { query } = req.query;
   if (!query)
@@ -27,8 +26,6 @@ app.get("/search", async (req, res) => {
 
   try {
     if (!youtube) await initYouTube();
-
-    // 🚀 SOLUCIÓN DEFINITIVA: Usamos el buscador nativo del submódulo de música para evitar el error HTTP 400 en la nube
     const searchResults = await youtube.music.search(query, { type: "song" });
 
     if (
@@ -39,7 +36,6 @@ app.get("/search", async (req, res) => {
       return res.json([]);
     }
 
-    // Ampliado a 30 resultados para mayor profundidad de búsqueda
     const tracks = searchResults.songs.contents.slice(0, 30).map((item) => ({
       youtube_id: item.id,
       title: item.title || "Título Desconocido",
@@ -65,56 +61,84 @@ app.get("/search", async (req, res) => {
   }
 });
 
-// Endpoint 3: Extraer la Cola de Recomendaciones Inteligentes (Estilo Algoritmo de Radio)
+// Endpoint 3: Extraer la Cola de Recomendaciones con LOGS ESTRUCTURALES PROFUNDOS
 app.get("/related/:id", async (req, res) => {
   const { id } = req.params;
 
   try {
     if (!youtube) await initYouTube();
     console.log(
-      `🌐 [YTMUSIC Algoritmo] Extrayendo cola automática para la canción semilla: ${id}`,
+      `🌐 [YTMUSIC Algoritmo] Solicitando NextInfo para semilla: ${id}`,
     );
 
     const nextInfo = await youtube.music.getNext(id);
 
-    if (
-      !nextInfo ||
-      !nextInfo.playlist_panel ||
-      !nextInfo.playlist_panel.contents
-    ) {
+    // 🔍 TELEMETRÍA DE COMPATIBILIDAD: Validamos la existencia de las capas de datos de Google
+    if (!nextInfo) {
+      console.warn(
+        `⚠️ [YTMUSIC Related] Objeto nextInfo vino completamente vacío de los servidores.`,
+      );
       return res.json([]);
     }
 
-    const relatedTracks = nextInfo.playlist_panel.contents;
+    // Evaluamos variaciones comunes en la respuesta de la librería para evitar caídas
+    const playlistPanel = nextInfo.playlist_panel || nextInfo.queue;
+
+    if (!playlistPanel || !playlistPanel.contents) {
+      console.warn(
+        `⚠️ [YTMUSIC Related] No se encontró playlist_panel o contenidos válidos para el ID ${id}. Estructura recibida:`,
+        Object.keys(nextInfo),
+      );
+      return res.json([]);
+    }
+
+    const relatedTracks = playlistPanel.contents;
+    console.log(
+      `📊 [YTMUSIC Related] Contenidos encontrados: ${relatedTracks.length} elementos. Iniciando mapeo binario...`,
+    );
 
     const tracks = relatedTracks
-      .filter((item) => item.id && item.title)
+      .filter((item) => item && (item.id || item.video_id) && item.title)
       .slice(0, 30)
-      .map((item) => ({
-        youtube_id: item.id,
-        title: item.title || "Título Desconocido",
-        artist: (item.artists && item.artists.length > 0
-          ? item.artists[0].name
-          : "Artista Desconocido"
-        )
-          .replace(/\s*-\s*Topic$/i, "")
-          .trim(),
-        duration_seconds: item.duration?.seconds || 180,
-        thumbnail:
-          item.thumbnails && item.thumbnails.length > 0
-            ? item.thumbnails[item.thumbnails.length - 1].url
-            : "",
-      }));
+      .map((item) => {
+        // Soporte elástico por si el id muta de nombre según la versión del player
+        const trackId = item.id || item.video_id;
+        const artistName =
+          item.artists && item.artists.length > 0
+            ? item.artists[0].name
+            : item.author || "Artista Desconocido";
 
+        return {
+          youtube_id: trackId,
+          title: item.title?.toString() || "Título Desconocido",
+          artist: artistName
+            .toString()
+            .replace(/\s*-\s*Topic$/i, "")
+            .trim(),
+          duration_seconds: item.duration?.seconds || item.duration || 180,
+          thumbnail:
+            item.thumbnails && item.thumbnails.length > 0
+              ? item.thumbnails[item.thumbnails.length - 1].url
+              : "",
+        };
+      });
+
+    console.log(
+      `🎉 [YTMUSIC Related] Mapeo completado con éxito. Devolviendo ${tracks.length} tracks procesados.`,
+    );
     res.json(tracks);
   } catch (error) {
+    // 🔍 LOG CRÍTICO DEFINITIVO: Captura el stack trace exacto del quiebre en producción
     console.error(
-      `🚨 [YTMUSIC Related Error] Falló el raspado de recomendados para ${id}:`,
-      error.message,
+      `🚨 [YTMUSIC Related Error] Falló el procesamiento para ${id}.`,
     );
+    console.error(`Detalle del error:`, error);
     res
       .status(500)
-      .json({ error: "No se pudo generar la lista de canciones recomendadas" });
+      .json({
+        error: "No se pudo generar la lista de canciones recomendadas",
+        deatils: error.message,
+      });
   }
 });
 
@@ -127,7 +151,6 @@ app.get("/stream-url/:id", (req, res) => {
     `🌐 [yt-dlp Core] Extrayendo streaming permanente para: ${id} vía SOCKS5:40000`,
   );
 
-  // 🚀 SOLUCIÓN DEFINITIVA: Corregidos los flags de un solo guion a doble guion oficial (--no-playlist, etc.)
   const ytDlpProcess = spawn("yt-dlp", [
     "-f",
     "251",
