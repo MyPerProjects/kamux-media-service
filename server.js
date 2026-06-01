@@ -7,7 +7,7 @@ const PORT = 5000;
 
 let youtube = null;
 
-// Inicializamos como WEB para garantizar que Google no bloquee las peticiones de red en la nube
+// Inicializamos como WEB para garantizar la estabilidad de peticiones asíncronas en la nube
 async function initYouTube() {
   try {
     youtube = await Innertube.create({ client_type: "WEB" });
@@ -30,7 +30,6 @@ app.get("/search", async (req, res) => {
   try {
     if (!youtube) await initYouTube();
 
-    // Forzamos al buscador general a darnos música oficial agregando el filtro implícito
     const searchResults = await youtube.search(`${query} song`, {
       type: "video",
     });
@@ -41,8 +40,12 @@ app.get("/search", async (req, res) => {
 
     const tracks = searchResults.videos.slice(0, 30).map((item) => ({
       youtube_id: item.id,
-      title: item.title?.text || "Título Desconocido",
-      artist: (item.author?.name || "Artista Desconocido")
+      title: item.title?.text || item.title?.toString() || "Título Desconocido",
+      artist: (
+        item.author?.name ||
+        item.author?.toString() ||
+        "Artista Desconocido"
+      )
         .replace(/\s*-\s*Topic$/i, "")
         .trim(),
       duration_seconds: item.duration?.seconds || 180,
@@ -59,7 +62,7 @@ app.get("/search", async (req, res) => {
   }
 });
 
-// Endpoint 3: Extraer la Radio Automática Real de Google (Canciones Similares de Diferentes Artistas)
+// Endpoint 3: Extraer la Radio Automática Real de Google (Canciones Similares de Varios Artistas)
 app.get("/related/:id", async (req, res) => {
   const { id } = req.params;
   if (!id || id === "undefined")
@@ -71,56 +74,70 @@ app.get("/related/:id", async (req, res) => {
       `🌐 [Kamux Algoritmo] Extrayendo Radio Automática para el track semilla: ${id}`,
     );
 
-    // Extraemos la información extendida del reproductor (incluye la secuencia "Up Next")
+    // Extraemos la información del reproductor extendido
     const info = await youtube.getInfo(id);
 
     if (!info || !info.watch_next_feed) {
       console.warn(
-        `⚠️ [Kamux Related] No se generó feed automático para el ID: ${id}`,
+        `⚠️ [Kamux Related] No se generó watch_next_feed para el ID: ${id}`,
       );
       return res.json([]);
     }
 
     const relatedContents = info.watch_next_feed;
     console.log(
-      `📊 [Kamux Related] Feed recuperado con éxito. Procesando sugerencias de género...`,
+      `📊 [Kamux Related] Raw Feed recuperado con éxito. Procesando ${relatedContents.length} elementos...`,
     );
 
-    // Expresión regular para limpiar canales multimedia basura y quedarnos solo con música
-    const musicFilters =
-      /(mv|official video|video oficial|audio|remix|lyrics|live|en vivo|topic)/i;
+    const tracks = [];
 
-    const tracks = relatedContents
-      .filter((item) => item && item.id && item.title && item.author)
-      .map((item) => {
-        const titleText = item.title?.text || "";
-        const authorText = item.author?.name || "";
+    // Recorremos el feed de forma defensiva extrayendo los datos sin importar la mutación del nodo
+    for (const item of relatedContents) {
+      if (!item) continue;
 
-        return {
-          youtube_id: item.id,
-          title: titleText,
-          artist: authorText.replace(/\s*-\s*Topic$/i, "").trim(),
-          duration_seconds: item.duration?.seconds || 180,
-          thumbnail:
-            item.thumbnails && item.thumbnails.length > 0
-              ? item.thumbnails[item.thumbnails.length - 1].url
-              : "",
-        };
-      })
-      // Filtramos defensivamente para asegurar que la radio sea 100% musical
+      // Unificamos las variaciones de ID que usa youtubei.js en objetos watch_next
+      const trackId =
+        item.id || item.video_id || item.endpoint?.payload?.videoId;
+      if (!trackId) continue;
+
+      // Extraemos el texto de forma elástica resolviendo objetos complejos de la librería
+      const rawTitle = item.title?.text || item.title?.toString() || "";
+      const rawArtist =
+        item.author?.name ||
+        item.author?.toString() ||
+        item.short_byline_text?.toString() ||
+        "Artista Desconocido";
+
+      // Ignoramos elementos vacíos o que correspondan a listas de reproducción embebidas
+      if (!rawTitle || rawTitle === "[object Object]") continue;
+
+      tracks.push({
+        youtube_id: trackId,
+        title: rawTitle,
+        artist: rawArtist.replace(/\s*-\s*Topic$/i, "").trim(),
+        duration_seconds: item.duration?.seconds || item.duration || 180,
+        thumbnail:
+          item.thumbnails && item.thumbnails.length > 0
+            ? item.thumbnails[item.thumbnails.length - 1].url
+            : "",
+      });
+    }
+
+    // Filtramos duplicados por ID de forma estricta por si Google repite tracks en el feed de reproducción continua
+    const uniqueTracks = tracks
       .filter(
-        (track) =>
-          musicFilters.test(track.title) || track.artist.includes("Topic"),
+        (track, index, self) =>
+          index === self.findIndex((t) => t.youtube_id === track.youtube_id),
       )
       .slice(0, 30);
 
     console.log(
-      `🎉 [Kamux Related] Radio generada con ${tracks.length} canciones similares de varios artistas.`,
+      `🎉 [Kamux Related] Radio mapeada con éxito. Devolviendo ${uniqueTracks.length} canciones del mismo género.`,
     );
-    res.json(tracks);
+    res.json(uniqueTracks);
   } catch (error) {
     console.error(
-      `🚨 [Kamux Related Error] Falló la radio para ${id}:`,
+      `🚨 [Kamux Related Error] Falló la extracción para ${id}:`,
       error.message,
     );
     res.status(500).json({ error: "Error al generar la radio automática" });
