@@ -61,47 +61,46 @@ app.get("/search", async (req, res) => {
   }
 });
 
-// Endpoint 3: Extraer la Cola de Recomendaciones con LOGS ESTRUCTURALES PROFUNDOS
+// Endpoint 3: Extraer la Cola de Recomendaciones con la función nativa correcta de youtubei.js
 app.get("/related/:id", async (req, res) => {
   const { id } = req.params;
 
   try {
     if (!youtube) await initYouTube();
     console.log(
-      `🌐 [YTMUSIC Algoritmo] Solicitando NextInfo para semilla: ${id}`,
+      `🌐 [YTMUSIC Algoritmo] Solicitando secuencia de reproducción para semilla: ${id}`,
     );
 
-    const nextInfo = await youtube.music.getNext(id);
+    // 🚀 SOLUCIÓN DEFINITIVA: Usamos getInfo() en la raíz global, que extrae la información extendida y la lista "Watch Next" de música
+    const info = await youtube.getInfo(id);
 
-    // 🔍 TELEMETRÍA DE COMPATIBILIDAD: Validamos la existencia de las capas de datos de Google
-    if (!nextInfo) {
+    if (!info) {
+      console.warn(`⚠️ [YTMUSIC Related] El objeto de información vino vacío.`);
+      return res.json([]);
+    }
+
+    // Extraemos la lista de videos/canciones sugeridas a continuación
+    // La librería almacena los tracks recomendados en watch_next_feed o mediante el panel de reproducción continua
+    const watchNextList =
+      info.watch_next_feed ||
+      (info.playlist_panel ? info.playlist_panel.contents : null);
+
+    if (!watchNextList || !watchNextList.contents) {
       console.warn(
-        `⚠️ [YTMUSIC Related] Objeto nextInfo vino completamente vacío de los servidores.`,
+        `⚠️ [YTMUSIC Related] No se detectó feed de reproducción automática continua para el ID ${id}.`,
       );
       return res.json([]);
     }
 
-    // Evaluamos variaciones comunes en la respuesta de la librería para evitar caídas
-    const playlistPanel = nextInfo.playlist_panel || nextInfo.queue;
-
-    if (!playlistPanel || !playlistPanel.contents) {
-      console.warn(
-        `⚠️ [YTMUSIC Related] No se encontró playlist_panel o contenidos válidos para el ID ${id}. Estructura recibida:`,
-        Object.keys(nextInfo),
-      );
-      return res.json([]);
-    }
-
-    const relatedTracks = playlistPanel.contents;
+    const relatedTracks = watchNextList.contents;
     console.log(
-      `📊 [YTMUSIC Related] Contenidos encontrados: ${relatedTracks.length} elementos. Iniciando mapeo binario...`,
+      `📊 [YTMUSIC Related] Contenidos encontrados: ${relatedTracks.length} elementos. Iniciando mapeo...`,
     );
 
     const tracks = relatedTracks
       .filter((item) => item && (item.id || item.video_id) && item.title)
       .slice(0, 30)
       .map((item) => {
-        // Soporte elástico por si el id muta de nombre según la versión del player
         const trackId = item.id || item.video_id;
         const artistName =
           item.artists && item.artists.length > 0
@@ -124,11 +123,10 @@ app.get("/related/:id", async (req, res) => {
       });
 
     console.log(
-      `🎉 [YTMUSIC Related] Mapeo completado con éxito. Devolviendo ${tracks.length} tracks procesados.`,
+      `🎉 [YTMUSIC Related] Mapeo completado con éxito. Devolviendo ${tracks.length} tracks.`,
     );
     res.json(tracks);
   } catch (error) {
-    // 🔍 LOG CRÍTICO DEFINITIVO: Captura el stack trace exacto del quiebre en producción
     console.error(
       `🚨 [YTMUSIC Related Error] Falló el procesamiento para ${id}.`,
     );
@@ -137,7 +135,7 @@ app.get("/related/:id", async (req, res) => {
       .status(500)
       .json({
         error: "No se pudo generar la lista de canciones recomendadas",
-        deatils: error.message,
+        details: error.message,
       });
   }
 });
