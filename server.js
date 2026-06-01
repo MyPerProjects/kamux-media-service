@@ -7,7 +7,6 @@ const PORT = 5000;
 
 let youtube = null;
 
-// Inicializamos como WEB para garantizar la estabilidad de peticiones asíncronas en la nube
 async function initYouTube() {
   try {
     youtube = await Innertube.create({ client_type: "WEB" });
@@ -62,7 +61,7 @@ app.get("/search", async (req, res) => {
   }
 });
 
-// Endpoint 3: Extraer la Radio Automática Real de Google (Canciones Similares de Varios Artistas)
+// Endpoint 3: Extraer la Radio Automática Real de Google Corregida
 app.get("/related/:id", async (req, res) => {
   const { id } = req.params;
   if (!id || id === "undefined")
@@ -74,7 +73,6 @@ app.get("/related/:id", async (req, res) => {
       `🌐 [Kamux Algoritmo] Extrayendo Radio Automática para el track semilla: ${id}`,
     );
 
-    // Extraemos la información del reproductor extendido
     const info = await youtube.getInfo(id);
 
     if (!info || !info.watch_next_feed) {
@@ -91,29 +89,23 @@ app.get("/related/:id", async (req, res) => {
 
     const tracks = [];
 
-    // Recorremos el feed de forma defensiva extrayendo los datos sin importar la mutación del nodo
     for (const item of relatedContents) {
       if (!item) continue;
 
-      // Unificamos las variaciones de ID que usa youtubei.js en objetos watch_next
-      const trackId =
-        item.id || item.video_id || item.endpoint?.payload?.videoId;
+      // Extraemos el ID de video de forma segura
+      const trackId = item.id || item.video_id;
       if (!trackId) continue;
 
-      // Extraemos el texto de forma elástica resolviendo objetos complejos de la librería
-      const rawTitle = item.title?.text || item.title?.toString() || "";
+      // SOLUCIÓN COMPLETA: Extraemos el texto crudo plano accediendo correctamente al render de la librería
+      const rawTitle =
+        item.title?.text || (typeof item.title === "string" ? item.title : "");
       const rawArtist =
         item.author?.name ||
-        item.author?.toString() ||
-        item.short_byline_text?.toString() ||
-        "Artista Desconocido";
-
-      // Ignoramos elementos vacíos o que correspondan a listas de reproducción embebidas
-      if (!rawTitle || rawTitle === "[object Object]") continue;
+        (typeof item.author === "string" ? item.author : "Artista Desconocido");
 
       tracks.push({
         youtube_id: trackId,
-        title: rawTitle,
+        title: rawTitle || "Canción Sugerida",
         artist: rawArtist.replace(/\s*-\s*Topic$/i, "").trim(),
         duration_seconds: item.duration?.seconds || item.duration || 180,
         thumbnail:
@@ -123,7 +115,7 @@ app.get("/related/:id", async (req, res) => {
       });
     }
 
-    // Filtramos duplicados por ID de forma estricta por si Google repite tracks en el feed de reproducción continua
+    // Filtramos duplicados por ID
     const uniqueTracks = tracks
       .filter(
         (track, index, self) =>
@@ -132,7 +124,7 @@ app.get("/related/:id", async (req, res) => {
       .slice(0, 30);
 
     console.log(
-      `🎉 [Kamux Related] Radio mapeada con éxito. Devolviendo ${uniqueTracks.length} canciones del mismo género.`,
+      `🎉 [Kamux Related] Mapeo completado. Devolviendo ${uniqueTracks.length} canciones.`,
     );
     res.json(uniqueTracks);
   } catch (error) {
@@ -144,7 +136,7 @@ app.get("/related/:id", async (req, res) => {
   }
 });
 
-// Endpoint 2: Extracción Binaria Nativa Tunelizada por Cloudflare WARP SOCKS5 (Puerto 40000)
+// Endpoint 2: Extracción Binaria Nativa Tunelizada por Cloudflare WARP SOCKS5
 app.get("/stream-url/:id", (req, res) => {
   const { id } = req.params;
   if (!id || id === "undefined")
