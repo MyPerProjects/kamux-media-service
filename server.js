@@ -61,7 +61,7 @@ app.get("/search", async (req, res) => {
   }
 });
 
-// Endpoint 3: Extraer la Radio Automática Real de Google Corregida
+// Endpoint 3: Extraer la Radio Automática Real de Google (Blindado)
 app.get("/related/:id", async (req, res) => {
   const { id } = req.params;
   if (!id || id === "undefined")
@@ -75,6 +75,7 @@ app.get("/related/:id", async (req, res) => {
 
     const info = await youtube.getInfo(id);
 
+    // Verificación de la existencia del feed
     if (!info || !info.watch_next_feed) {
       console.warn(
         `⚠️ [Kamux Related] No se generó watch_next_feed para el ID: ${id}`,
@@ -92,16 +93,48 @@ app.get("/related/:id", async (req, res) => {
     for (const item of relatedContents) {
       if (!item) continue;
 
-      // Extraemos el ID de video de forma segura
-      const trackId = item.id || item.video_id;
-      if (!trackId) continue;
+      // 1. Extracción ultra-defensiva del ID del Video
+      // youtubei.js suele usar id, video_id, o encapsularlo en un objeto interno
+      const trackId =
+        item.id ||
+        item.video_id ||
+        (item.key && item.key === "id" ? item.value : null);
 
-      // SOLUCIÓN COMPLETA: Extraemos el texto crudo plano accediendo correctamente al render de la librería
-      const rawTitle =
-        item.title?.text || (typeof item.title === "string" ? item.title : "");
-      const rawArtist =
-        item.author?.name ||
-        (typeof item.author === "string" ? item.author : "Artista Desconocido");
+      // Si el ID sigue sin aparecer, imprimimos un único elemento para inspeccionar su estructura real en la consola sin saturar el log
+      if (!trackId) {
+        if (tracks.length === 0) {
+          console.log(
+            "🔍 [Debug Kamux] Estructura de un item filtrado:",
+            JSON.stringify(item).substring(0, 400),
+          );
+        }
+        continue;
+      }
+
+      // 2. Extracción adaptativa del Título y Artista
+      // Convertimos a string de manera segura controlando los objetos intermedios de la librería
+      let rawTitle = "";
+      if (item.title) {
+        rawTitle =
+          typeof item.title === "string"
+            ? item.title
+            : item.title.text || item.title.toString();
+      }
+
+      let rawArtist = "Artista Desconocido";
+      if (item.author) {
+        rawArtist =
+          typeof item.author === "string"
+            ? item.author
+            : item.author.name || item.author.toString();
+      } else if (item.short_byline_text) {
+        rawArtist =
+          item.short_byline_text.text || item.short_byline_text.toString();
+      }
+
+      // Evitamos strings basura de la conversión implícita de objetos
+      if (rawTitle === "[object Object]") rawTitle = "Canción Sugerida";
+      if (rawArtist === "[object Object]") rawArtist = "Artista Sugerido";
 
       tracks.push({
         youtube_id: trackId,
