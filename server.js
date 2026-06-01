@@ -61,7 +61,7 @@ app.get("/search", async (req, res) => {
   }
 });
 
-// Endpoint 3: Extraer la Radio Automática Real Adaptada al Parser de Producción
+// Endpoint 3: Extraer la Radio Automática Real de Google (Con Logs de Control y Blindaje)
 app.get("/related/:id", async (req, res) => {
   const { id } = req.params;
   if (!id || id === "undefined")
@@ -84,67 +84,113 @@ app.get("/related/:id", async (req, res) => {
 
     const relatedContents = info.watch_next_feed;
     console.log(
-      `📊 [Kamux Related] Raw Feed recuperado con éxito. Procesando ${relatedContents.length} elementos...`,
+      `📊 [Kamux Related] Raw Feed recuperado con éxito. Filtrando componentes...`,
     );
 
     const tracks = [];
+    const trashKeywords =
+      /(story of|documental|documentary|review|entrevista|interview|reaccion|reaction|full album|tutorial|how to|biografia|biography)/i;
 
     for (const item of relatedContents) {
       if (!item) continue;
 
       let trackId = item.id || item.video_id;
       let rawTitle = "";
-      let rawArtist = "Artista Desconocido";
+      let rawArtist = "";
       let thumbUrl = "";
+      let duration = 180;
 
-      // 🚀 COMPATIBILIDAD CON LOCKUPVIEW REVELADA POR EL LOG
+      // PROCESAMIENTO DE LOCKUPVIEW CON TRACE DE SEGURIDAD
       if (item.type === "LockupView" || (!trackId && item.content_image)) {
-        // Extraemos las imágenes disponibles
         const images =
           item.content_image?.image || item.content_image?.thumbnails;
         if (images && images.length > 0) {
           thumbUrl = images[images.length - 1].url || "";
-
-          // Tratamiento de extracción quirúrgica del ID mediante la URL base del Thumbnail
           const idMatch = thumbUrl.match(/\/vi\/([^\/]+)\//);
           if (idMatch && idMatch[1]) {
-            trackId = idMatch[1].split("?")[0]; // Limpiamos parámetros query extras
+            trackId = idMatch[1].split("?")[0];
           }
         }
 
-        // Mapeamos los textos desde la estructura anidada de metadatos de vistas
         if (item.metadata) {
           rawTitle =
             item.metadata.title?.text || item.metadata.title?.toString() || "";
-          rawArtist =
-            item.metadata.author?.name ||
-            item.metadata.author?.toString() ||
-            "Artista Desconocido";
+
+          // 🔍 LOG DE INSPECCIÓN: Imprime cómo vienen las líneas de texto para asegurar el tiro
+          if (item.metadata.lines) {
+            // Mapeamos temporalmente el contenido de las líneas para el log de PM2
+            const linesDebug = item.metadata.lines
+              .map((l, idx) => `[Línea ${idx}]: ${l.text || l.toString()}`)
+              .join(" | ");
+            console.log(
+              `🔬 [Debug Metadatos] Track: "${rawTitle}" -> Estructura: ${linesDebug}`,
+            );
+
+            // Intentamos buscar una línea que NO contenga palabras de visualizaciones o fechas (para aislar al artista)
+            const viewsRegex =
+              /(vistas|views|reproducciones|hace|ago|\d+\s*(minutos|horas|días|meses|años))/i;
+            const artistLine = item.metadata.lines.find((l) => {
+              const txt = l.text || l.toString() || "";
+              return txt.trim().length > 0 && !viewsRegex.test(txt);
+            });
+
+            if (artistLine) {
+              rawArtist = artistLine.text || artistLine.toString() || "";
+            } else if (item.metadata.lines.length > 0) {
+              rawArtist =
+                item.metadata.lines[0].text ||
+                item.metadata.lines[0].toString() ||
+                "";
+            }
+          }
+
+          if (!rawArtist || rawArtist === "[object Object]") {
+            rawArtist =
+              item.metadata.author?.name ||
+              item.metadata.author?.toString() ||
+              "";
+          }
         }
       } else {
-        // Fallback estándar por si conviven componentes clásicos e híbridos en el feed
+        // Fallback clásico
         rawTitle = item.title?.text || item.title?.toString() || "";
-        rawArtist =
-          item.author?.name || item.author?.toString() || "Artista Desconocido";
+        rawArtist = item.author?.name || item.author?.toString() || "";
         thumbUrl =
           item.thumbnails && item.thumbnails.length > 0
             ? item.thumbnails[item.thumbnails.length - 1].url
             : "";
       }
 
-      // Si después de los análisis el ID no se resolvió, descartamos el renglón
-      if (!trackId) continue;
+      if (!trackId || !rawTitle || rawTitle === "[object Object]") continue;
+
+      duration = item.duration?.seconds || item.duration || 180;
+
+      // Salvaguarda: Si el parseo falla a pesar de todo, heredamos el artista semilla
+      if (
+        !rawArtist ||
+        rawArtist === "[object Object]" ||
+        rawArtist === "Artista Desconocido"
+      ) {
+        rawArtist = info.basic_info?.author || "Artista Sugerido";
+      }
+
+      // Filtro musical
+      if (trashKeywords.test(rawTitle) || duration > 720) {
+        console.log(
+          `🗑️ [Kamux Filtro] Excluyendo video no-musical: "${rawTitle}"`,
+        );
+        continue;
+      }
 
       tracks.push({
         youtube_id: trackId,
-        title: rawTitle || "Canción Sugerida",
+        title: rawTitle,
         artist: rawArtist.replace(/\s*-\s*Topic$/i, "").trim(),
-        duration_seconds: item.duration?.seconds || item.duration || 180,
+        duration_seconds: duration,
         thumbnail: thumbUrl,
       });
     }
 
-    // Filtramos duplicados por ID de video
     const uniqueTracks = tracks
       .filter(
         (track, index, self) =>
@@ -153,7 +199,7 @@ app.get("/related/:id", async (req, res) => {
       .slice(0, 30);
 
     console.log(
-      `🎉 [Kamux Related] Mapeo completado. Devolviendo ${uniqueTracks.length} canciones reales.`,
+      `🎉 [Kamux Related] Radio mapeada. Devolviendo ${uniqueTracks.length} canciones purificadas.`,
     );
     res.json(uniqueTracks);
   } catch (error) {
