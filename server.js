@@ -61,7 +61,7 @@ app.get("/search", async (req, res) => {
   }
 });
 
-// Endpoint 3: Extraer la Radio Automática Real de Google (Con Logs de Trazabilidad de Artista)
+// Endpoint 3: Extraer la Radio Automática Real de Google (Mapeo de Autor Corregido)
 app.get("/related/:id", async (req, res) => {
   const { id } = req.params;
   if (!id || id === "undefined")
@@ -119,18 +119,8 @@ app.get("/related/:id", async (req, res) => {
             const viewsRegex =
               /(vistas|views|reproducciones|hace|ago|\d+\s*(minutos|horas|días|meses|años))/i;
 
-            // 🚀 LOG DE SEGUIMIENTO: Inspeccionamos la metadata cruda de la librería antes de procesarla
-            if (tracks.length === 0) {
-              console.log(
-                `🔬 [Debug Parser] Track: "${rawTitle}" | Raw Lines JSON:`,
-                JSON.stringify(item.metadata.lines),
-              );
-            }
-
             for (const line of item.metadata.lines) {
               if (!line) continue;
-
-              // Extraemos el texto aplanando los runs o recurriendo al string implícito
               let textContent =
                 line.text ||
                 (line.runs && line.runs.map((r) => r.text).join("")) ||
@@ -147,11 +137,9 @@ app.get("/related/:id", async (req, res) => {
             }
           }
 
+          // 🚀 SOLUCIÓN AL ARTISTA: Buscamos el autor directamente en la raíz del item, no dentro de metadata
           if (!rawArtist || rawArtist === "[object Object]") {
-            rawArtist =
-              item.metadata.author?.name ||
-              item.metadata.author?.toString() ||
-              "";
+            rawArtist = item.author?.name || item.author?.toString() || "";
           }
         }
       } else {
@@ -167,13 +155,21 @@ app.get("/related/:id", async (req, res) => {
 
       duration = item.duration?.seconds || item.duration || 180;
 
-      // Si el mapeo falla, dejamos una etiqueta clara de trace en lugar de heredar estáticamente
+      // 🔍 LOG DE TRAZABILIDAD FORZADO: Si el artista sigue sin resolverse, imprimimos el objeto exacto para auditar las llaves reales
       if (
         !rawArtist ||
         rawArtist === "[object Object]" ||
         rawArtist === "Artista Desconocido"
       ) {
-        rawArtist = info.basic_info?.author || "Artista No Resuelto";
+        console.log(
+          `🔬 [Debug Fallback] Track Desconocido: "${rawTitle}" | Keys del objeto:`,
+          Object.keys(item),
+        );
+        if (item.metadata)
+          console.log(`   -> Metadata Keys:`, Object.keys(item.metadata));
+
+        // Salvaguarda final heredada del objeto semilla
+        rawArtist = info.basic_info?.author || "Artista Colectivo";
       }
 
       if (trashKeywords.test(rawTitle) || duration > 720) {
@@ -212,7 +208,7 @@ app.get("/related/:id", async (req, res) => {
   }
 });
 
-// Endpoint 2: Extracción Binaria Nativa con Formato Universal Estable
+// Endpoint 2: Extracción Binaria Nativa con Selector de Formato Universal Estable
 app.get("/stream-url/:id", (req, res) => {
   const { id } = req.params;
   if (!id || id === "undefined")
