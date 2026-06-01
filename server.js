@@ -61,7 +61,7 @@ app.get("/search", async (req, res) => {
   }
 });
 
-// Endpoint 3: Extraer la Radio Automática Real de Google
+// Endpoint 3: Extraer la Radio Automática Real de Google (Filtrada y Adaptada)
 app.get("/related/:id", async (req, res) => {
   const { id } = req.params;
   if (!id || id === "undefined")
@@ -197,7 +197,7 @@ app.get("/related/:id", async (req, res) => {
   }
 });
 
-// Endpoint 2: Extracción Binaria Nativa - Con Selector de Formato Universal Estable
+// Endpoint 2: Extracción Binaria Nativa con Formato Universal Estable
 app.get("/stream-url/:id", (req, res) => {
   const { id } = req.params;
   if (!id || id === "undefined")
@@ -206,7 +206,6 @@ app.get("/stream-url/:id", (req, res) => {
   const videoUrl = `https://www.youtube.com/watch?v=${id}`;
   console.log(`🌐 [yt-dlp Core] Extrayendo streaming permanente para: ${id}`);
 
-  // 🚀 SOLUCIÓN DEFINITIVA: Formato simplificado a "bestaudio" para garantizar compatibilidad con pistas legacy
   const ytDlpProcess = spawn("yt-dlp", [
     "-f",
     "bestaudio",
@@ -243,7 +242,7 @@ app.get("/stream-url/:id", (req, res) => {
   });
 });
 
-const server = app.listen(PORT, () => {
+app.listen(PORT, () => {
   console.log(
     `🚀 Kamux Media Service en modo Local-Core corriendo en el puerto ${PORT}`,
   );
