@@ -19,7 +19,7 @@ async function initYouTube() {
 
 initYouTube();
 
-// Endpoint 1: Búsqueda de Catálogo Musical Puro (Ampliado a 30 resultados)
+// Endpoint 1: Búsqueda de Catálogo Musical Puro utilizando el submódulo nativo de música
 app.get("/search", async (req, res) => {
   const { query } = req.query;
   if (!query)
@@ -28,8 +28,8 @@ app.get("/search", async (req, res) => {
   try {
     if (!youtube) await initYouTube();
 
-    // Filtramos la búsqueda nativa para capturar únicamente canciones en el ecosistema de música
-    const searchResults = await youtube.search(query, { type: "song" });
+    // 🚀 SOLUCIÓN DEFINITIVA: Usamos el buscador nativo del submódulo de música para evitar el error HTTP 400 en la nube
+    const searchResults = await youtube.music.search(query, { type: "song" });
 
     if (
       !searchResults.songs ||
@@ -39,7 +39,7 @@ app.get("/search", async (req, res) => {
       return res.json([]);
     }
 
-    // 🚀 Ampliado de 10 a 30 resultados para mayor profundidad de búsqueda
+    // Ampliado a 30 resultados para mayor profundidad de búsqueda
     const tracks = searchResults.songs.contents.slice(0, 30).map((item) => ({
       youtube_id: item.id,
       title: item.title || "Título Desconocido",
@@ -127,16 +127,17 @@ app.get("/stream-url/:id", (req, res) => {
     `🌐 [yt-dlp Core] Extrayendo streaming permanente para: ${id} vía SOCKS5:40000`,
   );
 
+  // 🚀 SOLUCIÓN DEFINITIVA: Corregidos los flags de un solo guion a doble guion oficial (--no-playlist, etc.)
   const ytDlpProcess = spawn("yt-dlp", [
     "-f",
     "251",
     "-g",
     "--proxy",
     "socks5://127.0.0.1:40000",
-    "-no-playlist",
-    "-no-check-certificates",
-    "-no-warnings",
-    "-legacy-server-connect",
+    "--no-playlist",
+    "--no-check-certificates",
+    "--no-warnings",
+    "--legacy-server-connect",
     videoUrl,
   ]);
 
