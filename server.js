@@ -61,40 +61,39 @@ app.get("/search", async (req, res) => {
   }
 });
 
-// Endpoint 3: Extraer la Cola de Recomendaciones con la función nativa correcta de youtubei.js
+// Endpoint 3: Extraer la Cola de Recomendaciones Nativas de YouTube Music
 app.get("/related/:id", async (req, res) => {
   const { id } = req.params;
 
   try {
     if (!youtube) await initYouTube();
     console.log(
-      `🌐 [YTMUSIC Algoritmo] Solicitando secuencia de reproducción para semilla: ${id}`,
+      `🌐 [YTMUSIC Algoritmo] Solicitando tracks relacionados para: ${id}`,
     );
 
-    // 🚀 SOLUCIÓN DEFINITIVA: Usamos getInfo() en la raíz global, que extrae la información extendida y la lista "Watch Next" de música
-    const info = await youtube.getInfo(id);
+    // 🚀 SOLUCIÓN RE-EVALUADA: Usamos el método nativo del ecosistema de música para evitar el HTTP 400
+    const relatedData = await youtube.music.getRelated(id);
 
-    if (!info) {
-      console.warn(`⚠️ [YTMUSIC Related] El objeto de información vino vacío.`);
-      return res.json([]);
-    }
-
-    // Extraemos la lista de videos/canciones sugeridas a continuación
-    // La librería almacena los tracks recomendados en watch_next_feed o mediante el panel de reproducción continua
-    const watchNextList =
-      info.watch_next_feed ||
-      (info.playlist_panel ? info.playlist_panel.contents : null);
-
-    if (!watchNextList || !watchNextList.contents) {
+    if (
+      !relatedData ||
+      !relatedData.sections ||
+      relatedData.sections.length === 0
+    ) {
       console.warn(
-        `⚠️ [YTMUSIC Related] No se detectó feed de reproducción automática continua para el ID ${id}.`,
+        `⚠️ [YTMUSIC Related] No se encontraron secciones de recomendados para el ID: ${id}`,
       );
       return res.json([]);
     }
 
-    const relatedTracks = watchNextList.contents;
+    // Buscamos la sección que contenga la lista de canciones (normalmente la primera sección)
+    const songsSection =
+      relatedData.sections.find(
+        (sec) => sec.contents && sec.contents.length > 0,
+      ) || relatedData.sections[0];
+
+    const relatedTracks = songsSection.contents;
     console.log(
-      `📊 [YTMUSIC Related] Contenidos encontrados: ${relatedTracks.length} elementos. Iniciando mapeo...`,
+      `📊 [YTMUSIC Related] Encontrados ${relatedTracks.length} tracks sugeridos en la sección de música.`,
     );
 
     const tracks = relatedTracks
@@ -123,14 +122,14 @@ app.get("/related/:id", async (req, res) => {
       });
 
     console.log(
-      `🎉 [YTMUSIC Related] Mapeo completado con éxito. Devolviendo ${tracks.length} tracks.`,
+      `🎉 [YTMUSIC Related] Mapeo completado. Devolviendo ${tracks.length} tracks a Kamux.`,
     );
     res.json(tracks);
   } catch (error) {
     console.error(
       `🚨 [YTMUSIC Related Error] Falló el procesamiento para ${id}.`,
     );
-    console.error(`Detalle del error:`, error);
+    console.error(`Detalle del error real:`, error.message);
     res
       .status(500)
       .json({
