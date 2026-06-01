@@ -61,39 +61,29 @@ app.get("/search", async (req, res) => {
   }
 });
 
-// Endpoint 3: Extraer la Cola de Recomendaciones Nativas de YouTube Music
+// Endpoint 3: Extraer la Cola de Recomendaciones vía Secuencia Automática Nativa
 app.get("/related/:id", async (req, res) => {
   const { id } = req.params;
 
   try {
     if (!youtube) await initYouTube();
     console.log(
-      `🌐 [YTMUSIC Algoritmo] Solicitando tracks relacionados para: ${id}`,
+      `🌐 [YTMUSIC Algoritmo] Solicitando secuencia automática de radio para: ${id}`,
     );
 
-    // 🚀 SOLUCIÓN RE-EVALUADA: Usamos el método nativo del ecosistema de música para evitar el HTTP 400
-    const relatedData = await youtube.music.getRelated(id);
+    // 🚀 SOLUCIÓN DEFINITIVA: Usamos getSequence para generar el feed continuo "Up Next" sin bloqueos
+    const sequence = await youtube.getSequence({ video_id: id });
 
-    if (
-      !relatedData ||
-      !relatedData.sections ||
-      relatedData.sections.length === 0
-    ) {
+    if (!sequence || !sequence.contents || sequence.contents.length === 0) {
       console.warn(
-        `⚠️ [YTMUSIC Related] No se encontraron secciones de recomendados para el ID: ${id}`,
+        `⚠️ [YTMUSIC Related] La secuencia de reproducción automática volvió vacía para el ID: ${id}`,
       );
       return res.json([]);
     }
 
-    // Buscamos la sección que contenga la lista de canciones (normalmente la primera sección)
-    const songsSection =
-      relatedData.sections.find(
-        (sec) => sec.contents && sec.contents.length > 0,
-      ) || relatedData.sections[0];
-
-    const relatedTracks = songsSection.contents;
+    const relatedTracks = sequence.contents;
     console.log(
-      `📊 [YTMUSIC Related] Encontrados ${relatedTracks.length} tracks sugeridos en la sección de música.`,
+      `📊 [YTMUSIC Related] Encontrados ${relatedTracks.length} tracks en el feed continuo de Google.`,
     );
 
     const tracks = relatedTracks
@@ -101,10 +91,11 @@ app.get("/related/:id", async (req, res) => {
       .slice(0, 30)
       .map((item) => {
         const trackId = item.id || item.video_id;
+        // Navegación elástica para extraer el autor/artista según cómo lo devuelva el feed de secuencia
         const artistName =
           item.artists && item.artists.length > 0
             ? item.artists[0].name
-            : item.author || "Artista Desconocido";
+            : item.author?.name || item.author || "Artista Desconocido";
 
         return {
           youtube_id: trackId,
@@ -122,13 +113,11 @@ app.get("/related/:id", async (req, res) => {
       });
 
     console.log(
-      `🎉 [YTMUSIC Related] Mapeo completado. Devolviendo ${tracks.length} tracks a Kamux.`,
+      `🎉 [YTMUSIC Related] Secuencia procesada con éxito. Devolviendo ${tracks.length} tracks.`,
     );
     res.json(tracks);
   } catch (error) {
-    console.error(
-      `🚨 [YTMUSIC Related Error] Falló el procesamiento para ${id}.`,
-    );
+    console.error(`🚨 [YTMUSIC Related Error] Falló la secuencia para ${id}.`);
     console.error(`Detalle del error real:`, error.message);
     res
       .status(500)
