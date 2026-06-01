@@ -197,7 +197,7 @@ app.get("/related/:id", async (req, res) => {
   }
 });
 
-// Endpoint 2: Extracción Binaria Nativa - Con Fallback Elástico de Códecs
+// Endpoint 2: Extracción Binaria Nativa - Con Selector de Formato Universal Estable
 app.get("/stream-url/:id", (req, res) => {
   const { id } = req.params;
   if (!id || id === "undefined")
@@ -206,10 +206,10 @@ app.get("/stream-url/:id", (req, res) => {
   const videoUrl = `https://www.youtube.com/watch?v=${id}`;
   console.log(`🌐 [yt-dlp Core] Extrayendo streaming permanente para: ${id}`);
 
-  // 🚀 SOLUCIÓN DEFINITIVA: Formato modificado a fallback adaptativo '251/140' para evitar errores de disponibilidad
+  // 🚀 SOLUCIÓN DEFINITIVA: Formato simplificado a "bestaudio" para garantizar compatibilidad con pistas legacy
   const ytDlpProcess = spawn("yt-dlp", [
     "-f",
-    "bestaudio[ext=webm]/bestaudio[ext=m4a]/251/140",
+    "bestaudio",
     "-g",
     "--proxy",
     "socks5://127.0.0.1:40000",
@@ -243,7 +243,7 @@ app.get("/stream-url/:id", (req, res) => {
   });
 });
 
-app.listen(PORT, () => {
+const server = app.listen(PORT, () => {
   console.log(
     `🚀 Kamux Media Service en modo Local-Core corriendo en el puerto ${PORT}`,
   );
