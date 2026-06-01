@@ -61,7 +61,7 @@ app.get("/search", async (req, res) => {
   }
 });
 
-// Endpoint 3: Extraer la Radio Automática Real de Google (Filtrada y Adaptada)
+// Endpoint 3: Extraer la Radio Automática Real de Google (Con Logs de Trazabilidad de Artista)
 app.get("/related/:id", async (req, res) => {
   const { id } = req.params;
   if (!id || id === "undefined")
@@ -115,21 +115,35 @@ app.get("/related/:id", async (req, res) => {
           rawTitle =
             item.metadata.title?.text || item.metadata.title?.toString() || "";
 
-          if (item.metadata.lines) {
+          if (item.metadata.lines && item.metadata.lines.length > 0) {
             const viewsRegex =
               /(vistas|views|reproducciones|hace|ago|\d+\s*(minutos|horas|días|meses|años))/i;
-            const artistLine = item.metadata.lines.find((l) => {
-              const txt = l.text || l.toString() || "";
-              return txt.trim().length > 0 && !viewsRegex.test(txt);
-            });
 
-            if (artistLine) {
-              rawArtist = artistLine.text || artistLine.toString() || "";
-            } else if (item.metadata.lines.length > 0) {
-              rawArtist =
-                item.metadata.lines[0].text ||
-                item.metadata.lines[0].toString() ||
-                "";
+            // 🚀 LOG DE SEGUIMIENTO: Inspeccionamos la metadata cruda de la librería antes de procesarla
+            if (tracks.length === 0) {
+              console.log(
+                `🔬 [Debug Parser] Track: "${rawTitle}" | Raw Lines JSON:`,
+                JSON.stringify(item.metadata.lines),
+              );
+            }
+
+            for (const line of item.metadata.lines) {
+              if (!line) continue;
+
+              // Extraemos el texto aplanando los runs o recurriendo al string implícito
+              let textContent =
+                line.text ||
+                (line.runs && line.runs.map((r) => r.text).join("")) ||
+                line.toString();
+
+              if (
+                textContent &&
+                textContent !== "[object Object]" &&
+                !viewsRegex.test(textContent)
+              ) {
+                rawArtist = textContent.trim();
+                break;
+              }
             }
           }
 
@@ -153,12 +167,13 @@ app.get("/related/:id", async (req, res) => {
 
       duration = item.duration?.seconds || item.duration || 180;
 
+      // Si el mapeo falla, dejamos una etiqueta clara de trace en lugar de heredar estáticamente
       if (
         !rawArtist ||
         rawArtist === "[object Object]" ||
         rawArtist === "Artista Desconocido"
       ) {
-        rawArtist = info.basic_info?.author || "Artista Sugerido";
+        rawArtist = info.basic_info?.author || "Artista No Resuelto";
       }
 
       if (trashKeywords.test(rawTitle) || duration > 720) {
