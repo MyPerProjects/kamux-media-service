@@ -197,7 +197,7 @@ app.get("/related/:id", async (req, res) => {
   }
 });
 
-// Endpoint 2: Extracción Binaria Nativa - CORREGIDO Quirúrgicamente sin Errores de Sintaxis
+// Endpoint 2: Extracción Binaria Nativa - Con Fallback Elástico de Códecs
 app.get("/stream-url/:id", (req, res) => {
   const { id } = req.params;
   if (!id || id === "undefined")
@@ -206,10 +206,10 @@ app.get("/stream-url/:id", (req, res) => {
   const videoUrl = `https://www.youtube.com/watch?v=${id}`;
   console.log(`🌐 [yt-dlp Core] Extrayendo streaming permanente para: ${id}`);
 
-  // 🚀 RE-EVALUADO: Flag de formato limpiado estrictamente a sintaxis estándar de Linux
+  // 🚀 SOLUCIÓN DEFINITIVA: Formato modificado a fallback adaptativo '251/140' para evitar errores de disponibilidad
   const ytDlpProcess = spawn("yt-dlp", [
     "-f",
-    "251",
+    "bestaudio[ext=webm]/bestaudio[ext=m4a]/251/140",
     "-g",
     "--proxy",
     "socks5://127.0.0.1:40000",
