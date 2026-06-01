@@ -61,7 +61,7 @@ app.get("/search", async (req, res) => {
   }
 });
 
-// Endpoint 3: Extraer la Radio Automática Real de Google (Blindado)
+// Endpoint 3: Extraer la Radio Automática Real Adaptada al Parser de Producción
 app.get("/related/:id", async (req, res) => {
   const { id } = req.params;
   if (!id || id === "undefined")
@@ -75,7 +75,6 @@ app.get("/related/:id", async (req, res) => {
 
     const info = await youtube.getInfo(id);
 
-    // Verificación de la existencia del feed
     if (!info || !info.watch_next_feed) {
       console.warn(
         `⚠️ [Kamux Related] No se generó watch_next_feed para el ID: ${id}`,
@@ -93,62 +92,59 @@ app.get("/related/:id", async (req, res) => {
     for (const item of relatedContents) {
       if (!item) continue;
 
-      // 1. Extracción ultra-defensiva del ID del Video
-      // youtubei.js suele usar id, video_id, o encapsularlo en un objeto interno
-      const trackId =
-        item.id ||
-        item.video_id ||
-        (item.key && item.key === "id" ? item.value : null);
-
-      // Si el ID sigue sin aparecer, imprimimos un único elemento para inspeccionar su estructura real en la consola sin saturar el log
-      if (!trackId) {
-        if (tracks.length === 0) {
-          console.log(
-            "🔍 [Debug Kamux] Estructura de un item filtrado:",
-            JSON.stringify(item).substring(0, 400),
-          );
-        }
-        continue;
-      }
-
-      // 2. Extracción adaptativa del Título y Artista
-      // Convertimos a string de manera segura controlando los objetos intermedios de la librería
+      let trackId = item.id || item.video_id;
       let rawTitle = "";
-      if (item.title) {
-        rawTitle =
-          typeof item.title === "string"
-            ? item.title
-            : item.title.text || item.title.toString();
-      }
-
       let rawArtist = "Artista Desconocido";
-      if (item.author) {
+      let thumbUrl = "";
+
+      // 🚀 COMPATIBILIDAD CON LOCKUPVIEW REVELADA POR EL LOG
+      if (item.type === "LockupView" || (!trackId && item.content_image)) {
+        // Extraemos las imágenes disponibles
+        const images =
+          item.content_image?.image || item.content_image?.thumbnails;
+        if (images && images.length > 0) {
+          thumbUrl = images[images.length - 1].url || "";
+
+          // Tratamiento de extracción quirúrgica del ID mediante la URL base del Thumbnail
+          const idMatch = thumbUrl.match(/\/vi\/([^\/]+)\//);
+          if (idMatch && idMatch[1]) {
+            trackId = idMatch[1].split("?")[0]; // Limpiamos parámetros query extras
+          }
+        }
+
+        // Mapeamos los textos desde la estructura anidada de metadatos de vistas
+        if (item.metadata) {
+          rawTitle =
+            item.metadata.title?.text || item.metadata.title?.toString() || "";
+          rawArtist =
+            item.metadata.author?.name ||
+            item.metadata.author?.toString() ||
+            "Artista Desconocido";
+        }
+      } else {
+        // Fallback estándar por si conviven componentes clásicos e híbridos en el feed
+        rawTitle = item.title?.text || item.title?.toString() || "";
         rawArtist =
-          typeof item.author === "string"
-            ? item.author
-            : item.author.name || item.author.toString();
-      } else if (item.short_byline_text) {
-        rawArtist =
-          item.short_byline_text.text || item.short_byline_text.toString();
+          item.author?.name || item.author?.toString() || "Artista Desconocido";
+        thumbUrl =
+          item.thumbnails && item.thumbnails.length > 0
+            ? item.thumbnails[item.thumbnails.length - 1].url
+            : "";
       }
 
-      // Evitamos strings basura de la conversión implícita de objetos
-      if (rawTitle === "[object Object]") rawTitle = "Canción Sugerida";
-      if (rawArtist === "[object Object]") rawArtist = "Artista Sugerido";
+      // Si después de los análisis el ID no se resolvió, descartamos el renglón
+      if (!trackId) continue;
 
       tracks.push({
         youtube_id: trackId,
         title: rawTitle || "Canción Sugerida",
         artist: rawArtist.replace(/\s*-\s*Topic$/i, "").trim(),
         duration_seconds: item.duration?.seconds || item.duration || 180,
-        thumbnail:
-          item.thumbnails && item.thumbnails.length > 0
-            ? item.thumbnails[item.thumbnails.length - 1].url
-            : "",
+        thumbnail: thumbUrl,
       });
     }
 
-    // Filtramos duplicados por ID
+    // Filtramos duplicados por ID de video
     const uniqueTracks = tracks
       .filter(
         (track, index, self) =>
@@ -157,7 +153,7 @@ app.get("/related/:id", async (req, res) => {
       .slice(0, 30);
 
     console.log(
-      `🎉 [Kamux Related] Mapeo completado. Devolviendo ${uniqueTracks.length} canciones.`,
+      `🎉 [Kamux Related] Mapeo completado. Devolviendo ${uniqueTracks.length} canciones reales.`,
     );
     res.json(uniqueTracks);
   } catch (error) {
