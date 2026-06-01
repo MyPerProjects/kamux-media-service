@@ -61,7 +61,7 @@ app.get("/search", async (req, res) => {
   }
 });
 
-// Endpoint 3: Extraer la Radio Automática Real de Google (Mapeo de Autor Corregido)
+// Endpoint 3: Extraer la Radio Automática Real de Google (Optimizado y Purificado)
 app.get("/related/:id", async (req, res) => {
   const { id } = req.params;
   if (!id || id === "undefined")
@@ -84,12 +84,14 @@ app.get("/related/:id", async (req, res) => {
 
     const relatedContents = info.watch_next_feed;
     console.log(
-      `📊 [Kamux Related] Raw Feed recuperado con éxito. Filtrando componentes...`,
+      `📊 [Kamux Related] Raw Feed de ${relatedContents.length} elementos recuperado con éxito.`,
     );
 
     const tracks = [];
     const trashKeywords =
       /(story of|documental|documentary|review|entrevista|interview|reaccion|reaction|full album|tutorial|how to|biografia|biography)/i;
+    const viewsRegex =
+      /(vistas|views|reproducciones|hace|ago|\d+\s*(minutos|horas|días|meses|años))/i;
 
     for (const item of relatedContents) {
       if (!item) continue;
@@ -100,6 +102,7 @@ app.get("/related/:id", async (req, res) => {
       let thumbUrl = "";
       let duration = 180;
 
+      // PROCESAMIENTO ADAPTATIVO REVELADO POR EL LOG DE AUDITORÍA
       if (item.type === "LockupView" || (!trackId && item.content_image)) {
         const images =
           item.content_image?.image || item.content_image?.thumbnails;
@@ -115,11 +118,12 @@ app.get("/related/:id", async (req, res) => {
           rawTitle =
             item.metadata.title?.text || item.metadata.title?.toString() || "";
 
-          if (item.metadata.lines && item.metadata.lines.length > 0) {
-            const viewsRegex =
-              /(vistas|views|reproducciones|hace|ago|\d+\s*(minutos|horas|días|meses|años))/i;
+          // 🚀 SOLUCIÓN DEFINITIVA DE METADATOS: Resolvemos la doble envoltura detectada en el log
+          const innerMetadata = item.metadata.metadata;
+          const targetLines = innerMetadata?.lines || item.metadata.lines;
 
-            for (const line of item.metadata.lines) {
+          if (targetLines && targetLines.length > 0) {
+            for (const line of targetLines) {
               if (!line) continue;
               let textContent =
                 line.text ||
@@ -137,12 +141,13 @@ app.get("/related/:id", async (req, res) => {
             }
           }
 
-          // 🚀 SOLUCIÓN AL ARTISTA: Buscamos el autor directamente en la raíz del item, no dentro de metadata
+          // Fallback en la raíz del item por si viene como canal Topic directo
           if (!rawArtist || rawArtist === "[object Object]") {
             rawArtist = item.author?.name || item.author?.toString() || "";
           }
         }
       } else {
+        // Fallback clásico para componentes estándar
         rawTitle = item.title?.text || item.title?.toString() || "";
         rawArtist = item.author?.name || item.author?.toString() || "";
         thumbUrl =
@@ -151,27 +156,21 @@ app.get("/related/:id", async (req, res) => {
             : "";
       }
 
+      // Validaciones de sanidad
       if (!trackId || !rawTitle || rawTitle === "[object Object]") continue;
 
       duration = item.duration?.seconds || item.duration || 180;
 
-      // 🔍 LOG DE TRAZABILIDAD FORZADO: Si el artista sigue sin resolverse, imprimimos el objeto exacto para auditar las llaves reales
+      // Salvaguarda final: Si todo falla, heredamos el autor principal del track semilla
       if (
         !rawArtist ||
         rawArtist === "[object Object]" ||
         rawArtist === "Artista Desconocido"
       ) {
-        console.log(
-          `🔬 [Debug Fallback] Track Desconocido: "${rawTitle}" | Keys del objeto:`,
-          Object.keys(item),
-        );
-        if (item.metadata)
-          console.log(`   -> Metadata Keys:`, Object.keys(item.metadata));
-
-        // Salvaguarda final heredada del objeto semilla
         rawArtist = info.basic_info?.author || "Artista Colectivo";
       }
 
+      // Filtro estricto anti-basura y límite de duración (12 minutos)
       if (trashKeywords.test(rawTitle) || duration > 720) {
         console.log(
           `🗑️ [Kamux Filtro] Excluyendo video no-musical: "${rawTitle}"`,
@@ -188,6 +187,7 @@ app.get("/related/:id", async (req, res) => {
       });
     }
 
+    // Purgamos duplicados exactos en la cola por ID
     const uniqueTracks = tracks
       .filter(
         (track, index, self) =>
@@ -196,7 +196,7 @@ app.get("/related/:id", async (req, res) => {
       .slice(0, 30);
 
     console.log(
-      `🎉 [Kamux Related] Radio mapeada. Devolviendo ${uniqueTracks.length} canciones purificadas.`,
+      `🎉 [Kamux Related] Mapeo completado con éxito. Devolviendo ${uniqueTracks.length} canciones purificadas.`,
     );
     res.json(uniqueTracks);
   } catch (error) {
@@ -208,7 +208,7 @@ app.get("/related/:id", async (req, res) => {
   }
 });
 
-// Endpoint 2: Extracción Binaria Nativa con Selector de Formato Universal Estable
+// Endpoint 2: Extracción Binaria Nativa (Estable con Formato Universal "bestaudio")
 app.get("/stream-url/:id", (req, res) => {
   const { id } = req.params;
   if (!id || id === "undefined")
