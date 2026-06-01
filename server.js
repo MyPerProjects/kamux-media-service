@@ -61,7 +61,7 @@ app.get("/search", async (req, res) => {
   }
 });
 
-// Endpoint 3: Extraer la Radio Automática Real de Google (Con Logs de Control y Blindaje)
+// Endpoint 3: Extraer la Radio Automática Real de Google
 app.get("/related/:id", async (req, res) => {
   const { id } = req.params;
   if (!id || id === "undefined")
@@ -100,7 +100,6 @@ app.get("/related/:id", async (req, res) => {
       let thumbUrl = "";
       let duration = 180;
 
-      // PROCESAMIENTO DE LOCKUPVIEW CON TRACE DE SEGURIDAD
       if (item.type === "LockupView" || (!trackId && item.content_image)) {
         const images =
           item.content_image?.image || item.content_image?.thumbnails;
@@ -116,17 +115,7 @@ app.get("/related/:id", async (req, res) => {
           rawTitle =
             item.metadata.title?.text || item.metadata.title?.toString() || "";
 
-          // 🔍 LOG DE INSPECCIÓN: Imprime cómo vienen las líneas de texto para asegurar el tiro
           if (item.metadata.lines) {
-            // Mapeamos temporalmente el contenido de las líneas para el log de PM2
-            const linesDebug = item.metadata.lines
-              .map((l, idx) => `[Línea ${idx}]: ${l.text || l.toString()}`)
-              .join(" | ");
-            console.log(
-              `🔬 [Debug Metadatos] Track: "${rawTitle}" -> Estructura: ${linesDebug}`,
-            );
-
-            // Intentamos buscar una línea que NO contenga palabras de visualizaciones o fechas (para aislar al artista)
             const viewsRegex =
               /(vistas|views|reproducciones|hace|ago|\d+\s*(minutos|horas|días|meses|años))/i;
             const artistLine = item.metadata.lines.find((l) => {
@@ -152,7 +141,6 @@ app.get("/related/:id", async (req, res) => {
           }
         }
       } else {
-        // Fallback clásico
         rawTitle = item.title?.text || item.title?.toString() || "";
         rawArtist = item.author?.name || item.author?.toString() || "";
         thumbUrl =
@@ -165,7 +153,6 @@ app.get("/related/:id", async (req, res) => {
 
       duration = item.duration?.seconds || item.duration || 180;
 
-      // Salvaguarda: Si el parseo falla a pesar de todo, heredamos el artista semilla
       if (
         !rawArtist ||
         rawArtist === "[object Object]" ||
@@ -174,7 +161,6 @@ app.get("/related/:id", async (req, res) => {
         rawArtist = info.basic_info?.author || "Artista Sugerido";
       }
 
-      // Filtro musical
       if (trashKeywords.test(rawTitle) || duration > 720) {
         console.log(
           `🗑️ [Kamux Filtro] Excluyendo video no-musical: "${rawTitle}"`,
@@ -211,7 +197,7 @@ app.get("/related/:id", async (req, res) => {
   }
 });
 
-// Endpoint 2: Extracción Binaria Nativa Tunelizada por Cloudflare WARP SOCKS5
+// Endpoint 2: Extracción Binaria Nativa - CORREGIDO Quirúrgicamente sin Errores de Sintaxis
 app.get("/stream-url/:id", (req, res) => {
   const { id } = req.params;
   if (!id || id === "undefined")
@@ -220,6 +206,7 @@ app.get("/stream-url/:id", (req, res) => {
   const videoUrl = `https://www.youtube.com/watch?v=${id}`;
   console.log(`🌐 [yt-dlp Core] Extrayendo streaming permanente para: ${id}`);
 
+  // 🚀 RE-EVALUADO: Flag de formato limpiado estrictamente a sintaxis estándar de Linux
   const ytDlpProcess = spawn("yt-dlp", [
     "-f",
     "251",
@@ -234,14 +221,23 @@ app.get("/stream-url/:id", (req, res) => {
   ]);
 
   let output = "";
+  let errorOutput = "";
+
   ytDlpProcess.stdout.on("data", (data) => {
     output += data.toString();
+  });
+  ytDlpProcess.stderr.on("data", (data) => {
+    errorOutput += data.toString();
   });
 
   ytDlpProcess.on("close", (code) => {
     if (code === 0 && output.trim()) {
       res.json({ url: output.trim() });
     } else {
+      console.error(
+        `🚨 [yt-dlp Core Error] Falló el proceso hijo. Código de salida ${code}. Buffer:`,
+        errorOutput,
+      );
       res.status(500).json({ error: "No se pudo extraer la URL" });
     }
   });
