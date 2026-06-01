@@ -7,18 +7,21 @@ const PORT = 5000;
 
 let youtube = null;
 
+// Inicializamos como WEB para garantizar que Google no bloquee las peticiones de red en la nube
 async function initYouTube() {
   try {
-    youtube = await Innertube.create({ client_type: "YTMUSIC" });
-    console.log("🔒 [Media Service] Catálogo de YouTube Music inicializado.");
+    youtube = await Innertube.create({ client_type: "WEB" });
+    console.log(
+      "🔒 [Media Service] Catálogo Multimedia de Kamux Inicializado.",
+    );
   } catch (error) {
-    console.error("🚨 Error en catálogo de búsquedas:", error.message);
+    console.error("🚨 Error en inicialización del catálogo:", error.message);
   }
 }
 
 initYouTube();
 
-// Endpoint 1: Búsqueda de Catálogo Musical Puro
+// Endpoint 1: Búsqueda de Catálogo Musical
 app.get("/search", async (req, res) => {
   const { query } = req.query;
   if (!query)
@@ -26,23 +29,20 @@ app.get("/search", async (req, res) => {
 
   try {
     if (!youtube) await initYouTube();
-    const searchResults = await youtube.music.search(query, { type: "song" });
 
-    if (
-      !searchResults.songs ||
-      !searchResults.songs.contents ||
-      searchResults.songs.contents.length === 0
-    ) {
+    // Forzamos al buscador general a darnos música oficial agregando el filtro implícito
+    const searchResults = await youtube.search(`${query} song`, {
+      type: "video",
+    });
+
+    if (!searchResults.videos || searchResults.videos.length === 0) {
       return res.json([]);
     }
 
-    const tracks = searchResults.songs.contents.slice(0, 30).map((item) => ({
+    const tracks = searchResults.videos.slice(0, 30).map((item) => ({
       youtube_id: item.id,
-      title: item.title || "Título Desconocido",
-      artist: (item.artists && item.artists.length > 0
-        ? item.artists[0].name
-        : "Artista Desconocido"
-      )
+      title: item.title?.text || "Título Desconocido",
+      artist: (item.author?.name || "Artista Desconocido")
         .replace(/\s*-\s*Topic$/i, "")
         .trim(),
       duration_seconds: item.duration?.seconds || 180,
@@ -54,88 +54,87 @@ app.get("/search", async (req, res) => {
 
     res.json(tracks);
   } catch (error) {
-    console.error("🚨 Error en búsqueda YTMUSIC:", error.message);
-    res
-      .status(500)
-      .json({ error: "Error al procesar la búsqueda en YouTube Music" });
+    console.error("🚨 Error en búsqueda:", error.message);
+    res.status(500).json({ error: "Error al procesar la búsqueda" });
   }
 });
 
-// Endpoint 3: Extraer la Cola de Recomendaciones vía Secuencia Automática Nativa
+// Endpoint 3: Extraer la Radio Automática Real de Google (Canciones Similares de Diferentes Artistas)
 app.get("/related/:id", async (req, res) => {
   const { id } = req.params;
+  if (!id || id === "undefined")
+    return res.status(400).json({ error: "ID inválido o undefined" });
 
   try {
     if (!youtube) await initYouTube();
     console.log(
-      `🌐 [YTMUSIC Algoritmo] Solicitando secuencia automática de radio para: ${id}`,
+      `🌐 [Kamux Algoritmo] Extrayendo Radio Automática para el track semilla: ${id}`,
     );
 
-    // 🚀 SOLUCIÓN DEFINITIVA: Usamos getSequence para generar el feed continuo "Up Next" sin bloqueos
-    const sequence = await youtube.getSequence({ video_id: id });
+    // Extraemos la información extendida del reproductor (incluye la secuencia "Up Next")
+    const info = await youtube.getInfo(id);
 
-    if (!sequence || !sequence.contents || sequence.contents.length === 0) {
+    if (!info || !info.watch_next_feed) {
       console.warn(
-        `⚠️ [YTMUSIC Related] La secuencia de reproducción automática volvió vacía para el ID: ${id}`,
+        `⚠️ [Kamux Related] No se generó feed automático para el ID: ${id}`,
       );
       return res.json([]);
     }
 
-    const relatedTracks = sequence.contents;
+    const relatedContents = info.watch_next_feed;
     console.log(
-      `📊 [YTMUSIC Related] Encontrados ${relatedTracks.length} tracks en el feed continuo de Google.`,
+      `📊 [Kamux Related] Feed recuperado con éxito. Procesando sugerencias de género...`,
     );
 
-    const tracks = relatedTracks
-      .filter((item) => item && (item.id || item.video_id) && item.title)
-      .slice(0, 30)
+    // Expresión regular para limpiar canales multimedia basura y quedarnos solo con música
+    const musicFilters =
+      /(mv|official video|video oficial|audio|remix|lyrics|live|en vivo|topic)/i;
+
+    const tracks = relatedContents
+      .filter((item) => item && item.id && item.title && item.author)
       .map((item) => {
-        const trackId = item.id || item.video_id;
-        // Navegación elástica para extraer el autor/artista según cómo lo devuelva el feed de secuencia
-        const artistName =
-          item.artists && item.artists.length > 0
-            ? item.artists[0].name
-            : item.author?.name || item.author || "Artista Desconocido";
+        const titleText = item.title?.text || "";
+        const authorText = item.author?.name || "";
 
         return {
-          youtube_id: trackId,
-          title: item.title?.toString() || "Título Desconocido",
-          artist: artistName
-            .toString()
-            .replace(/\s*-\s*Topic$/i, "")
-            .trim(),
-          duration_seconds: item.duration?.seconds || item.duration || 180,
+          youtube_id: item.id,
+          title: titleText,
+          artist: authorText.replace(/\s*-\s*Topic$/i, "").trim(),
+          duration_seconds: item.duration?.seconds || 180,
           thumbnail:
             item.thumbnails && item.thumbnails.length > 0
               ? item.thumbnails[item.thumbnails.length - 1].url
               : "",
         };
-      });
+      })
+      // Filtramos defensivamente para asegurar que la radio sea 100% musical
+      .filter(
+        (track) =>
+          musicFilters.test(track.title) || track.artist.includes("Topic"),
+      )
+      .slice(0, 30);
 
     console.log(
-      `🎉 [YTMUSIC Related] Secuencia procesada con éxito. Devolviendo ${tracks.length} tracks.`,
+      `🎉 [Kamux Related] Radio generada con ${tracks.length} canciones similares de varios artistas.`,
     );
     res.json(tracks);
   } catch (error) {
-    console.error(`🚨 [YTMUSIC Related Error] Falló la secuencia para ${id}.`);
-    console.error(`Detalle del error real:`, error.message);
-    res
-      .status(500)
-      .json({
-        error: "No se pudo generar la lista de canciones recomendadas",
-        details: error.message,
-      });
+    console.error(
+      `🚨 [Kamux Related Error] Falló la radio para ${id}:`,
+      error.message,
+    );
+    res.status(500).json({ error: "Error al generar la radio automática" });
   }
 });
 
 // Endpoint 2: Extracción Binaria Nativa Tunelizada por Cloudflare WARP SOCKS5 (Puerto 40000)
 app.get("/stream-url/:id", (req, res) => {
   const { id } = req.params;
-  const videoUrl = `https://www.youtube.com/watch?v=${id}`;
+  if (!id || id === "undefined")
+    return res.status(400).json({ error: "ID inválido o undefined" });
 
-  console.log(
-    `🌐 [yt-dlp Core] Extrayendo streaming permanente para: ${id} vía SOCKS5:40000`,
-  );
+  const videoUrl = `https://www.youtube.com/watch?v=${id}`;
+  console.log(`🌐 [yt-dlp Core] Extrayendo streaming permanente para: ${id}`);
 
   const ytDlpProcess = spawn("yt-dlp", [
     "-f",
@@ -151,30 +150,15 @@ app.get("/stream-url/:id", (req, res) => {
   ]);
 
   let output = "";
-  let errorOutput = "";
-
   ytDlpProcess.stdout.on("data", (data) => {
     output += data.toString();
-  });
-  ytDlpProcess.stderr.on("data", (data) => {
-    errorOutput += data.toString();
   });
 
   ytDlpProcess.on("close", (code) => {
     if (code === 0 && output.trim()) {
-      const freshUrl = output.trim();
-      console.log(`🎉 [yt-dlp Core] URL directa de Google extraída con éxito.`);
-      res.json({ url: freshUrl });
+      res.json({ url: output.trim() });
     } else {
-      console.error(
-        `🚨 [yt-dlp Core Error] Falló la extracción binaria. Detalle del buffer:`,
-        errorOutput,
-      );
-      res
-        .status(500)
-        .json({
-          error: "No se pudo extraer la URL directa a través del túnel",
-        });
+      res.status(500).json({ error: "No se pudo extraer la URL" });
     }
   });
 });
