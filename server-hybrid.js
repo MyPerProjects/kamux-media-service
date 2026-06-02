@@ -1,11 +1,11 @@
-require("dotenv").config(); // 🛡️ Inicialización del entorno seguro
+require("dotenv").config(); // 🛡️ Carga el pool seguro desde el .env
 const express = require("express");
 const { google } = require("googleapis");
 
 const app = express();
 const PORT = 5001;
 
-// 🚀 POOL DINÁMICO AUTOMÁTICO: Filtra y carga todas las llaves GOOGLE_API_KEY_ del .env
+// 🚀 POOL DINÁMICO AUTOMÁTICO: Filtra y carga todas las llaves del .env
 const googleApiKeys = Object.keys(process.env)
   .filter((key) => key.startsWith("GOOGLE_API_KEY_"))
   .map((key) => process.env[key]);
@@ -20,23 +20,24 @@ function getYouTubeClient() {
 
 function rotateYouTubeKey() {
   if (googleApiKeys.length === 0) return;
+  const oldIndex = currentKeyIndex;
   currentKeyIndex = (currentKeyIndex + 1) % googleApiKeys.length;
   console.log(
-    `🔄 [API Pool] Alerta de Cuota. Rotando automáticamente a la API Key índice: ${currentKeyIndex}`,
+    `🔄 [POOL ROTACIÓN] Llave índice ${oldIndex} marcada inutilizable. Saltando automáticamente al índice: ${currentKeyIndex}`,
   );
 }
 
 app.get("/health", (req, res) => {
   res.json({
     status: "ok",
-    message: "Motor Híbrido Multillave Inmortal de Kamux en línea",
+    message: "Motor Híbrido Multillave de Kamux en línea",
     active_key_index: currentKeyIndex,
     total_keys_loaded: googleApiKeys.length,
     keys_configured: googleApiKeys.length > 0,
   });
 });
 
-// 🔍 1. ENDPOINT DE BÚSQUEDA NATIVO (Portadas HD oficiales con salto de cuota inmediato y garantizado)
+// 🔍 1. ENDPOINT DE BÚSQUEDA NATIVO (Portadas HD con Rotación Agresiva a prueba de balas)
 app.get("/search", async (req, res) => {
   const { q } = req.query;
   if (!q) {
@@ -46,12 +47,15 @@ app.get("/search", async (req, res) => {
   }
 
   console.log(
-    `🎵 [Kamux Search] Buscando de forma nativa en YouTube para: "${q}"`,
+    `🔍 [Petición Buscar] Iniciando rastreo nativo en YouTube para: "${q}"`,
   );
 
-  // Bucle síncrono controlado sobre el pool de llaves
+  // El bucle for recorrerá secuencialmente el pool buscando una llave viva
   for (let pases = 0; pases < googleApiKeys.length; pases++) {
     try {
+      console.log(
+        `📡 [Search Intento ${pases + 1}] Evaluando con API Key Índice: ${currentKeyIndex}`,
+      );
       const youtube = getYouTubeClient();
 
       const response = await youtube.search.list({
@@ -73,38 +77,24 @@ app.get("/search", async (req, res) => {
       }));
 
       console.log(
-        `✅ [Kamux Search] Resultados HD obtenidos con éxito. Enviando ${tracks.length} canciones.`,
+        `✅ [Search Éxito] Petición resuelta impecable por la Key Índice: ${currentKeyIndex}. Enviando ${tracks.length} tracks.`,
       );
-      return res.json(tracks); // Corta la ejecución y responde al cliente de NestJS con éxito
+      return res.json(tracks); // Éxito absoluto, rompe la petición y responde a NestJS
     } catch (error) {
-      const isQuotaError =
-        error.statusCode === 403 ||
-        (error.errors && error.errors[0]?.domain === "usageLimits");
-
-      if (isQuotaError) {
-        console.warn(
-          `⚠️ [Pool Búsqueda] API Key índice ${currentKeyIndex} sin cuota.`,
-        );
-        rotateYouTubeKey();
-        console.log(
-          `🔄 [Reintento Inmediato] Evaluando con siguiente llave índice: ${currentKeyIndex}`,
-        );
-        continue; // 🛡️ SEGURO: Salta al siguiente pase del bucle 'for' usando el nuevo índice en caliente
-      } else {
-        console.error(
-          "🚨 Error de conexión o comunicación con YouTube API en búsqueda:",
-          error.message,
-        );
-        return res
-          .status(500)
-          .json({
-            error: "Error interno al conectar con el catálogo multimedia",
-          });
-      }
+      console.warn(
+        `⚠️ [Search Advertencia] La API Key Índice ${currentKeyIndex} falló. Detalle: ${error.message}`,
+      );
+      rotateYouTubeKey();
+      console.log(
+        `🔄 [Search Reintento Síncrono] Forzando pase inmediato a la siguiente llave...`,
+      );
+      continue; // 🛡️ INMORTAL: Salta al siguiente pase del bucle 'for' usando el nuevo índice en caliente
     }
   }
 
-  // Si el flujo del código sale del bucle for, significa que recorrió todas las llaves y todas fallaron
+  console.error(
+    "🚨 [Search Colapso] Se recorrieron las 10 llaves del pool y todas rechazaron la conexión.",
+  );
   return res
     .status(403)
     .json({
@@ -124,7 +114,7 @@ app.get("/related", async (req, res) => {
 
   try {
     console.log(
-      `📻 [Kamux Intel] Pidiendo a Last.fm canciones similares a: ${artist} - ${track}`,
+      `📻 [Radio Intel] Solicitando mix contextual a Last.fm para: ${artist} - ${track}`,
     );
     const lastFmUrl = `http://ws.audioscrobbler.com/2.0/?method=track.getsimilar&artist=${encodeURIComponent(artist)}&track=${encodeURIComponent(track)}&api_key=${LASTFM_API_KEY}&format=json&limit=10`;
 
@@ -143,11 +133,13 @@ app.get("/related", async (req, res) => {
       thumbnail: "",
     }));
 
-    console.log(`✅ [Kamux Radio] Mix contextual devuelto desde Last.fm.`);
+    console.log(
+      `✅ [Radio Éxito] Cola infinita generada de forma limpia. Enviando ${recommendations.length} tracks.`,
+    );
     return res.json(recommendations);
   } catch (error) {
     console.error(
-      "🚨 Error crítico en el motor híbrido de la radio:",
+      "🚨 [Radio Error] Falla crítica en la API de Last.fm:",
       error.message,
     );
     return res
@@ -156,7 +148,7 @@ app.get("/related", async (req, res) => {
   }
 });
 
-// 🎯 3. RESOLVER DE ENLACES BAJO DEMANDA (Portadas HD oficiales en background con continue garantizado)
+// 🎯 3. RESOLVER DE ENLACES BAJO DEMANDA (Portadas HD en background con rotación agresiva libre de candados)
 app.get("/resolve-id", async (req, res) => {
   const { artist, track } = req.query;
   if (!artist || !track) {
@@ -165,10 +157,14 @@ app.get("/resolve-id", async (req, res) => {
       .json({ error: "Faltan artist o track para resolver el enlace" });
   }
 
+  console.log(
+    `🔍 [Petición Resolver] Iniciando emparejamiento asíncrono para: ${artist} - ${track}`,
+  );
+
   for (let pases = 0; pases < googleApiKeys.length; pases++) {
     try {
       console.log(
-        `🔍 [Pool Google] Resolviendo ID para: ${artist} - ${track} (Key Index: ${currentKeyIndex})`,
+        `📡 [Resolver Intento ${pases + 1}] Evaluando con API Key Índice: ${currentKeyIndex}`,
       );
       const youtube = getYouTubeClient();
       const searchQuery = `${artist} - ${track}`;
@@ -182,9 +178,15 @@ app.get("/resolve-id", async (req, res) => {
 
       const firstResult = ytResponse.data.items?.[0];
       if (!firstResult) {
+        console.log(
+          `⚠️ [Resolver Vacío] YouTube no encontró ningún video que coincida para el track.`,
+        );
         return res.json({ youtube_id: "", thumbnail: "" });
       }
 
+      console.log(
+        `✅ [Resolver Éxito] ID obtenido con éxito por la Key Índice: ${currentKeyIndex}.`,
+      );
       return res.json({
         youtube_id: firstResult.id.videoId,
         thumbnail:
@@ -193,33 +195,20 @@ app.get("/resolve-id", async (req, res) => {
           "",
       });
     } catch (ytError) {
-      const isQuotaError =
-        ytError.statusCode === 403 ||
-        (ytError.errors && ytError.errors[0]?.domain === "usageLimits");
-
-      if (isQuotaError) {
-        console.warn(
-          `⚠️ [Pool Resolver] API Key índice ${currentKeyIndex} reportó cuota agotada.`,
-        );
-        rotateYouTubeKey();
-        console.log(
-          `🔄 [Reintento Inmediato] Evaluando con siguiente llave índice: ${currentKeyIndex}`,
-        );
-        continue; // 🛡️ SEGURO: Salta al siguiente pase del bucle 'for' usando el nuevo índice en caliente
-      } else {
-        console.error(
-          `🚨 Error grave de comunicación con YouTube API:`,
-          ytError.message,
-        );
-        return res
-          .status(500)
-          .json({
-            error: "Error interactuando con el proveedor de video externo",
-          });
-      }
+      console.warn(
+        `⚠️ [Resolver Advertencia] La API Key Índice ${currentKeyIndex} falló. Detalle: ${ytError.message}`,
+      );
+      rotateYouTubeKey();
+      console.log(
+        `🔄 [Resolver Reintento Síncrono] Forzando pase inmediato a la siguiente llave...`,
+      );
+      continue; // 🛡️ INMORTAL: Salta al siguiente pase del bucle 'for' usando el nuevo índice en caliente
     }
   }
 
+  console.error(
+    "🚨 [Resolver Colapso] Se recorrieron las 10 llaves del pool y ninguna pudo resolver el ID.",
+  );
   return res
     .status(403)
     .json({
@@ -230,6 +219,6 @@ app.get("/resolve-id", async (req, res) => {
 
 app.listen(PORT, () => {
   console.log(
-    `🚀 Motor Multillave Inmortal de Producción corriendo en el puerto ${PORT}`,
+    `🚀 Motor Multillave Inmortal Premium [Puerto ${PORT}] desplegado con telemetría de control.`,
   );
 });
