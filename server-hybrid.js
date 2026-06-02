@@ -36,7 +36,7 @@ app.get("/health", (req, res) => {
   });
 });
 
-// 🔍 1. ENDPOINT DE BÚSQUEDA INVERTIDO (Metadata Pura de Estudio - Gasto de Cuota Google = 0)
+// 🔍 1. ENDPOINT DE BÚSQUEDA NATIVO (Pool Seguro con Rotación + Miniaturas HD e IDs Listos)
 app.get("/search", async (req, res) => {
   const { q } = req.query;
   if (!q) {
@@ -45,45 +45,64 @@ app.get("/search", async (req, res) => {
       .json({ error: "Falta el parámetro de búsqueda (q)" });
   }
 
-  try {
-    console.log(
-      `🎵 [Kamux Search] Buscando canciones oficiales para: "${q}" en la base de datos de Last.fm`,
-    );
-    const lastFmSearchUrl = `http://ws.audioscrobbler.com/2.0/?method=track.search&track=${encodeURIComponent(q)}&api_key=${LASTFM_API_KEY}&format=json&limit=15`;
+  console.log(`🎵 [Kamux Search] Buscando en YouTube API para: "${q}"`);
 
-    const response = await fetch(lastFmSearchUrl);
-    const data = await response.json();
+  for (let pases = 0; pases < googleApiKeys.length; pases++) {
+    try {
+      const youtube = getYouTubeClient();
 
-    if (
-      !data.results ||
-      !data.results.trackmatches ||
-      !data.results.trackmatches.track
-    ) {
-      return res.json([]);
+      const response = await youtube.search.list({
+        part: "snippet",
+        q: q,
+        type: "video",
+        maxResults: 15,
+      });
+
+      const tracks = response.data.items.map((item) => ({
+        youtube_id: item.id.videoId,
+        title: item.snippet.title,
+        artist: item.snippet.channelTitle,
+        duration_seconds: 180,
+        thumbnail:
+          item.snippet.thumbnails?.high?.url ||
+          item.snippet.thumbnails?.default?.url ||
+          "",
+      }));
+
+      console.log(
+        `✅ [Kamux Search] Catálogo premium generado con éxito de forma nativa. Enviando ${tracks.length} canciones.`,
+      );
+      return res.json(tracks);
+    } catch (error) {
+      const isQuotaError =
+        error.statusCode === 403 ||
+        (error.errors && error.errors[0]?.domain === "usageLimits");
+
+      if (isQuotaError) {
+        console.warn(
+          `⚠️ [Kamux Search API] La API Key ${currentKeyIndex} se quedó sin cuota.`,
+        );
+        rotateYouTubeKey();
+        console.log(`🔄 Reintentando búsqueda nativa con la nueva llave...`);
+      } else {
+        console.error(
+          "🚨 Error grave en la API de YouTube en búsqueda:",
+          error.message,
+        );
+        return res
+          .status(500)
+          .json({
+            error: "Error interno al conectar con la base de datos de música",
+          });
+      }
     }
-
-    // Los resultados viajan limpios de inmediato. El ID de YouTube se resolverá bajo demanda (Lazy Loading)
-    const tracks = data.results.trackmatches.track.map((item) => ({
-      youtube_id: "",
-      title: item.name,
-      artist: item.artist,
-      duration_seconds: 180,
-      thumbnail: item.image?.[2]?.["#text"] || "",
-    }));
-
-    console.log(
-      `✅ [Kamux Search] Catálogo premium generado con éxito. Enviando ${tracks.length} canciones.`,
-    );
-    return res.json(tracks);
-  } catch (error) {
-    console.error(
-      "🚨 Error crítico en el motor de búsqueda invertido:",
-      error.message,
-    );
-    return res
-      .status(500)
-      .json({ error: "No se pudo procesar la búsqueda en este momento" });
   }
+
+  res
+    .status(403)
+    .json({
+      error: "Todas las API Keys del pool han agotado su cuota diaria.",
+    });
 });
 
 // 📻 2. ENDPOINT DE RECOMENDACIONES CONTEXTUAL (Mix Oficial sin consultas previas a YouTube)
@@ -140,7 +159,6 @@ app.get("/resolve-id", async (req, res) => {
       .json({ error: "Faltan artist o track para resolver el enlace" });
   }
 
-  // El bucle garantiza recorrer el pool de llaves de forma ordenada si hay caídas de cuota
   for (let pases = 0; pases < googleApiKeys.length; pases++) {
     try {
       console.log(
@@ -181,7 +199,6 @@ app.get("/resolve-id", async (req, res) => {
         console.log(
           `🔄 Reintentando resolución de forma inmediata con el nuevo índice: ${currentKeyIndex}`,
         );
-        // Al no poner un return aquí, el bucle for avanza al siguiente pase y reejecuta el bloque try con la nueva llave
       } else {
         console.error(
           `🚨 Error grave de comunicación con YouTube API:`,
