@@ -5,11 +5,7 @@ const app = express();
 const PORT = 5001; // Puerto alternativo para nuestro laboratorio seguro
 
 // POOL OFICIAL DE API KEYS DE GOOGLE (30,000 puntos diarios iniciales)
-const googleApiKeys = [
-  "AIzaSyCQsXEEQwfjsDTSdhJiV7qPpWs3RbnAFQ4", // Key 1
-  "AIzaSyA2VrCdvlLabsJmEM31_JWnOkp0KMKga6w", // Key 2
-  "AIzaSyBHfME2wEQnTNcLDHdoR69NZeRngYhhEfs", // Key 3
-];
+const googleApiKeys = [GOOGLE_API_KEY_1, GOOGLE_API_KEY_2, GOOGLE_API_KEY_3];
 let currentKeyIndex = 0;
 
 // CREDENCIALES OFICIALES DE LAST.FM (Inteligencia Musical)
