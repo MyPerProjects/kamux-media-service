@@ -1,18 +1,16 @@
-require("dotenv").config(); // 🛡️ Inicialización obligatoria del lector del archivo .env
+require("dotenv").config(); // 🛡️ Inicialización del entorno seguro
 const express = require("express");
 const { google } = require("googleapis");
 
 const app = express();
 const PORT = 5001;
 
-// POOL PROTEGIDO: Carga las 3 nuevas API Keys sin exponerlas en texto plano
-const googleApiKeys = [
-  process.env.GOOGLE_API_KEY_1,
-  process.env.GOOGLE_API_KEY_2,
-  process.env.GOOGLE_API_KEY_3,
-];
-let currentKeyIndex = 0;
+// 🚀 POOL DINÁMICO AUTOMÁTICO: Filtra y carga todas las llaves GOOGLE_API_KEY_ del .env
+const googleApiKeys = Object.keys(process.env)
+  .filter((key) => key.startsWith("GOOGLE_API_KEY_"))
+  .map((key) => process.env[key]);
 
+let currentKeyIndex = 0;
 const LASTFM_API_KEY = "be2e3cdcfd556decfa03abe4fd3d0bd9";
 
 function getYouTubeClient() {
@@ -21,6 +19,7 @@ function getYouTubeClient() {
 }
 
 function rotateYouTubeKey() {
+  if (googleApiKeys.length === 0) return;
   currentKeyIndex = (currentKeyIndex + 1) % googleApiKeys.length;
   console.log(
     `🔄 [API Pool] Alerta de Cuota. Rotando automáticamente a la API Key índice: ${currentKeyIndex}`,
@@ -30,13 +29,14 @@ function rotateYouTubeKey() {
 app.get("/health", (req, res) => {
   res.json({
     status: "ok",
-    message: "Laboratorio Híbrido de Kamux en línea",
+    message: "Motor Híbrido Multillave Inmortal de Kamux en línea",
     active_key_index: currentKeyIndex,
-    keys_configured: googleApiKeys.every((k) => !!k),
+    total_keys_loaded: googleApiKeys.length,
+    keys_configured: googleApiKeys.length > 0,
   });
 });
 
-// 🔍 1. ENDPOINT DE BÚSQUEDA NATIVO (Pool Seguro con Rotación + Miniaturas HD e IDs Listos)
+// 🔍 1. ENDPOINT DE BÚSQUEDA NATIVO (Portadas HD oficiales con salto de cuota inmediato y garantizado)
 app.get("/search", async (req, res) => {
   const { q } = req.query;
   if (!q) {
@@ -45,8 +45,11 @@ app.get("/search", async (req, res) => {
       .json({ error: "Falta el parámetro de búsqueda (q)" });
   }
 
-  console.log(`🎵 [Kamux Search] Buscando en YouTube API para: "${q}"`);
+  console.log(
+    `🎵 [Kamux Search] Buscando de forma nativa en YouTube para: "${q}"`,
+  );
 
+  // Bucle síncrono controlado sobre el pool de llaves
   for (let pases = 0; pases < googleApiKeys.length; pases++) {
     try {
       const youtube = getYouTubeClient();
@@ -70,9 +73,9 @@ app.get("/search", async (req, res) => {
       }));
 
       console.log(
-        `✅ [Kamux Search] Catálogo premium generado con éxito de forma nativa. Enviando ${tracks.length} canciones.`,
+        `✅ [Kamux Search] Resultados HD obtenidos con éxito. Enviando ${tracks.length} canciones.`,
       );
-      return res.json(tracks);
+      return res.json(tracks); // Corta la ejecución y responde al cliente de NestJS con éxito
     } catch (error) {
       const isQuotaError =
         error.statusCode === 403 ||
@@ -80,32 +83,37 @@ app.get("/search", async (req, res) => {
 
       if (isQuotaError) {
         console.warn(
-          `⚠️ [Kamux Search API] La API Key ${currentKeyIndex} se quedó sin cuota.`,
+          `⚠️ [Pool Búsqueda] API Key índice ${currentKeyIndex} sin cuota.`,
         );
         rotateYouTubeKey();
-        console.log(`🔄 Reintentando búsqueda nativa con la nueva llave...`);
+        console.log(
+          `🔄 [Reintento Inmediato] Evaluando con siguiente llave índice: ${currentKeyIndex}`,
+        );
+        continue; // 🛡️ SEGURO: Salta al siguiente pase del bucle 'for' usando el nuevo índice en caliente
       } else {
         console.error(
-          "🚨 Error grave en la API de YouTube en búsqueda:",
+          "🚨 Error de conexión o comunicación con YouTube API en búsqueda:",
           error.message,
         );
         return res
           .status(500)
           .json({
-            error: "Error interno al conectar con la base de datos de música",
+            error: "Error interno al conectar con el catálogo multimedia",
           });
       }
     }
   }
 
-  res
+  // Si el flujo del código sale del bucle for, significa que recorrió todas las llaves y todas fallaron
+  return res
     .status(403)
     .json({
-      error: "Todas las API Keys del pool han agotado su cuota diaria.",
+      error:
+        "Todas las API Keys del pool se encuentran totalmente agotadas por hoy.",
     });
 });
 
-// 📻 2. ENDPOINT DE RECOMENDACIONES CONTEXTUAL (Mix Oficial sin consultas previas a YouTube)
+// 📻 2. ENDPOINT DE RECOMENDACIONES CONTEXTUAL (Last.fm Directo)
 app.get("/related", async (req, res) => {
   const { artist, track } = req.query;
   if (!artist || !track) {
@@ -132,12 +140,10 @@ app.get("/related", async (req, res) => {
       title: item.name,
       artist: item.artist.name,
       duration_seconds: item.duration || 180,
-      thumbnail: item.image?.[2]?.["#text"] || "",
+      thumbnail: "",
     }));
 
-    console.log(
-      `✅ [Kamux Core] Cola de radio extendida generada exitosamente desde Last.fm.`,
-    );
+    console.log(`✅ [Kamux Radio] Mix contextual devuelto desde Last.fm.`);
     return res.json(recommendations);
   } catch (error) {
     console.error(
@@ -150,7 +156,7 @@ app.get("/related", async (req, res) => {
   }
 });
 
-// 🎯 3. RESOLVER DE ENLACES BAJO DEMANDA (Con reintento de rotación síncrona real en el bucle)
+// 🎯 3. RESOLVER DE ENLACES BAJO DEMANDA (Portadas HD oficiales en background con continue garantizado)
 app.get("/resolve-id", async (req, res) => {
   const { artist, track } = req.query;
   if (!artist || !track) {
@@ -193,12 +199,13 @@ app.get("/resolve-id", async (req, res) => {
 
       if (isQuotaError) {
         console.warn(
-          `⚠️ [Pool Google] La API Key índice ${currentKeyIndex} reportó cuota agotada.`,
+          `⚠️ [Pool Resolver] API Key índice ${currentKeyIndex} reportó cuota agotada.`,
         );
         rotateYouTubeKey();
         console.log(
-          `🔄 Reintentando resolución de forma inmediata con el nuevo índice: ${currentKeyIndex}`,
+          `🔄 [Reintento Inmediato] Evaluando con siguiente llave índice: ${currentKeyIndex}`,
         );
+        continue; // 🛡️ SEGURO: Salta al siguiente pase del bucle 'for' usando el nuevo índice en caliente
       } else {
         console.error(
           `🚨 Error grave de comunicación con YouTube API:`,
@@ -217,12 +224,12 @@ app.get("/resolve-id", async (req, res) => {
     .status(403)
     .json({
       error:
-        "Todas las API Keys del pool seguro se encuentran agotadas por el día de hoy.",
+        "Todas las API Keys del pool masivo se encuentran agotadas por hoy.",
     });
 });
 
 app.listen(PORT, () => {
   console.log(
-    `🚀 Laboratorio seguro [Kamux Hybrid Core] corriendo de manera ininterrumpida en el puerto ${PORT}`,
+    `🚀 Motor Multillave Inmortal de Producción corriendo en el puerto ${PORT}`,
   );
 });
