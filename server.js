@@ -61,7 +61,7 @@ app.get("/search", async (req, res) => {
   }
 });
 
-// Endpoint 3: Extraer la Radio Automática Real de Google (Optimizado y Purificado)
+// Endpoint 3: Extraer la Radio Automática Real de Google (Mapeo de Artista Infallible)
 app.get("/related/:id", async (req, res) => {
   const { id } = req.params;
   if (!id || id === "undefined")
@@ -102,7 +102,6 @@ app.get("/related/:id", async (req, res) => {
       let thumbUrl = "";
       let duration = 180;
 
-      // PROCESAMIENTO ADAPTATIVO REVELADO POR EL LOG DE AUDITORÍA
       if (item.type === "LockupView" || (!trackId && item.content_image)) {
         const images =
           item.content_image?.image || item.content_image?.thumbnails;
@@ -118,36 +117,41 @@ app.get("/related/:id", async (req, res) => {
           rawTitle =
             item.metadata.title?.text || item.metadata.title?.toString() || "";
 
-          // 🚀 SOLUCIÓN DEFINITIVA DE METADATOS: Resolvemos la doble envoltura detectada en el log
-          const innerMetadata = item.metadata.metadata;
-          const targetLines = innerMetadata?.lines || item.metadata.lines;
+          // 🚀 EXTRACCIÓN DIRECTA: Si Google anida la metadata, barremos todas las fuentes posibles de texto plano de arriba a abajo
+          const innerMeta = item.metadata.metadata;
 
-          if (targetLines && targetLines.length > 0) {
-            for (const line of targetLines) {
-              if (!line) continue;
-              let textContent =
-                line.text ||
-                (line.runs && line.runs.map((r) => r.text).join("")) ||
-                line.toString();
+          // Intentamos jalar cualquier propiedad de texto directo que use la librería para el autor
+          rawArtist =
+            item.author?.name ||
+            item.author?.toString() ||
+            innerMeta?.author?.name ||
+            innerMeta?.author?.toString() ||
+            "";
 
-              if (
-                textContent &&
-                textContent !== "[object Object]" &&
-                !viewsRegex.test(textContent)
-              ) {
-                rawArtist = textContent.trim();
-                break;
+          // Si sigue vacío, escaneamos las líneas purificando el texto plano sin importar la envoltura
+          if (!rawArtist || rawArtist === "[object Object]") {
+            const targetLines = innerMeta?.lines || item.metadata.lines;
+            if (targetLines && targetLines.length > 0) {
+              for (const line of targetLines) {
+                if (!line) continue;
+                let textContent =
+                  line.text ||
+                  (line.runs && line.runs.map((r) => r.text).join("")) ||
+                  line.toString();
+
+                if (
+                  textContent &&
+                  textContent !== "[object Object]" &&
+                  !viewsRegex.test(textContent)
+                ) {
+                  rawArtist = textContent.trim();
+                  break;
+                }
               }
             }
           }
-
-          // Fallback en la raíz del item por si viene como canal Topic directo
-          if (!rawArtist || rawArtist === "[object Object]") {
-            rawArtist = item.author?.name || item.author?.toString() || "";
-          }
         }
       } else {
-        // Fallback clásico para componentes estándar
         rawTitle = item.title?.text || item.title?.toString() || "";
         rawArtist = item.author?.name || item.author?.toString() || "";
         thumbUrl =
@@ -156,21 +160,32 @@ app.get("/related/:id", async (req, res) => {
             : "";
       }
 
-      // Validaciones de sanidad
       if (!trackId || !rawTitle || rawTitle === "[object Object]") continue;
 
       duration = item.duration?.seconds || item.duration || 180;
 
-      // Salvaguarda final: Si todo falla, heredamos el autor principal del track semilla
+      // 🚀 SALVAGUARDA QUIRÚRGICA: Si no hay artista o da el "Artista Colectivo" genérico del canal de YouTube,
+      // raspamos de forma limpia el nombre del artista directamente desde el título del video (ej: "Chabelos - Luisa" -> "Chabelos")
       if (
         !rawArtist ||
         rawArtist === "[object Object]" ||
-        rawArtist === "Artista Desconocido"
+        rawArtist === "Artista Desconocido" ||
+        rawArtist === "Various Artists" ||
+        rawArtist === "Artista Colectivo"
       ) {
-        rawArtist = info.basic_info?.author || "Artista Colectivo";
+        if (rawTitle.includes("-")) {
+          rawArtist = rawTitle.split("-")[0].trim();
+        } else {
+          // Fallback final al autor del reproductor base si no hay guion separador
+          rawArtist =
+            info.basic_info?.author &&
+            info.basic_info.author !== "Various Artists" &&
+            info.basic_info.author !== "Artista Colectivo"
+              ? info.basic_info.author
+              : "Artista Sugerido";
+        }
       }
 
-      // Filtro estricto anti-basura y límite de duración (12 minutos)
       if (trashKeywords.test(rawTitle) || duration > 720) {
         console.log(
           `🗑️ [Kamux Filtro] Excluyendo video no-musical: "${rawTitle}"`,
@@ -187,7 +202,6 @@ app.get("/related/:id", async (req, res) => {
       });
     }
 
-    // Purgamos duplicados exactos en la cola por ID
     const uniqueTracks = tracks
       .filter(
         (track, index, self) =>
@@ -196,7 +210,7 @@ app.get("/related/:id", async (req, res) => {
       .slice(0, 30);
 
     console.log(
-      `🎉 [Kamux Related] Mapeo completado con éxito. Devolviendo ${uniqueTracks.length} canciones purificadas.`,
+      `🎉 [Kamux Related] Radio mapeada. Devolviendo ${uniqueTracks.length} canciones purificadas.`,
     );
     res.json(uniqueTracks);
   } catch (error) {
