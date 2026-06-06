@@ -232,6 +232,8 @@ app.get("/stream-url/:id", (req, res) => {
   console.log(`🌐 [yt-dlp Core] Extrayendo streaming permanente para: ${id}`);
 
   const ytDlpProcess = spawn("yt-dlp", [
+    "--cookies",
+    "./cookies.txt",
     "-f",
     "bestaudio",
     "-g",
